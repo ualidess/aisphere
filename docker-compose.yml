@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: avatar_front_backend
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    networks:
+      # Подключаем бэкенд к двум сетям:
+      - avatar_front_net      # 1. Внутренняя сеть для связи с фронтендом
+      - existing_api_network  # 2. Внешняя сеть для связи с вашим API
+
+  frontend:
+    image: nginx:alpine
+    container_name: avatar_front_frontend
+    ports:
+      # Публикуем UI на порту 8078
+      - "8078:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - backend
+    networks:
+      - avatar_front_net
+
+networks:
+  # Наша новая внутренняя сеть
+  avatar_front_net:
+    driver: bridge
+  
+  # Указываем Docker, что сеть вашего API уже существует
+  existing_api_network:
+    external: true
+    # Имя этой сети нужно узнать и вписать сюда
+    name: avatar_default 

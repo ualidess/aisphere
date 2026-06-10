@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>AI Sphere</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000000;
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    #ai-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    #scene {
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #controls {
+      position: absolute;
+      bottom: 5vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      z-index: 10;
+    }
+    #status {
+      font-size: 16px;
+      font-weight: 300;
+      color: rgba(255, 255, 255, 0.7);
+      height: 25px;
+      transition: color 0.3s ease;
+      text-align: center;
+    }
+    .button-row {
+      display: flex;
+      gap: 15px;
+    }
+    button {
+      background: rgba(45, 45, 45, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: white;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      backdrop-filter: blur(5px);
+    }
+    button:hover:not(:disabled) {
+      background: rgba(65, 65, 65, 0.9);
+      border-color: rgba(255, 255, 255, 0.4);
+      transform: translateY(-2px);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="ai-container">
+    <canvas id="scene"></canvas>
+    <div id="controls">
+      <div id="status">Нажмите 'Задать вопрос', чтобы начать</div>
+      <div class="button-row">
+        <button id="askBtn"><i class="fas fa-microphone"></i> Задать вопрос</button>
+        <!-- Новая кнопка, которая появится во время записи -->
+        <button id="finishRecBtn" class="hidden"><i class="fas fa-check"></i> Закончить</button>
+        <button id="sendBtn" class="hidden"><i class="fas fa-paper-plane"></i> Отправить</button>
+        <button id="cancelBtn" class="hidden"><i class="fas fa-times"></i> Отмена</button>
+        <button id="stopBtn" class="hidden"><i class="fas fa-stop"></i> Остановить</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
