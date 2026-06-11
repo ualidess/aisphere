@@ -55,7 +55,7 @@ ai_sphere_avatar/
 Создайте файл `.env` в корне проекта:
 
 ```env
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=
 ```
 
 ### 2. Внешняя Docker-сеть
@@ -84,7 +84,7 @@ docker compose up --build
 
 ```python
 NEW_API_URL = "http://policy_router_api:8079/chat"
-NEW_API_KEY = "zaebis_avatar_1457"
+NEW_API_KEY = 
 ```
 
 При смене адреса/ключа внешнего API обновите эти значения.
