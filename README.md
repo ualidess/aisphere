@@ -2,7 +2,7 @@
 
 Голосовой AI-ассистент с анимированной 3D-сферой. Пользователь задаёт вопрос голосом, сфера реагирует анимацией на каждое состояние (запись / размышление / ответ), а ответ озвучивается голосом.
 
-Под капотом: фронтенд на чистом JavaScript + [Three.js](https://threejs.org/) (сфера на GLSL-шейдерах с шумом Симплекса), бэкенд на Flask, который связывает вместе OpenAI Whisper (распознавание речи), внешний чат-API и OpenAI TTS (синтез речи). Всё разворачивается через Docker Compose за обратным прокси Nginx.
+Под капотом: фронтенд на чистом JavaScript + [Three.js](https://threejs.org/) (сфера на GLSL-шейдерах с шумом Симплекса), бэкенд на FastAPI/Uvicorn с endpoint `/chat`, который напрямую обращается к OpenAI Chat Completions. Всё разворачивается через Docker Compose за обратным прокси Nginx.
 
 ## Как это работает
 
@@ -10,28 +10,28 @@
 Браузер (Three.js сфера + запись с микрофона)
    │  /api/*  (Nginx проксирует на бэкенд)
    ▼
-Flask backend (app.py)
-   ├── POST /stt   → OpenAI Whisper          (аудио → текст)
-   ├── POST /chat  → внешний policy_router_api (текст → ответ)
-   └── POST /tts   → OpenAI TTS (tts-1, alloy) (текст → аудио)
+FastAPI backend (app.py)
+   ├── GET  /      → healthcheck
+   └── POST /chat  → OpenAI Chat Completions напрямую (текст → ответ)
 ```
 
-Полный цикл одного вопроса (см. `sendBtn.onclick` в [frontend/script.js](frontend/script.js)):
+Полный цикл текстового запроса в текущей версии:
 
-1. Пользователь нажимает **«Задать вопрос»** — начинается запись с микрофона (автостоп через 5 секунд или по кнопке **«Закончить»**).
-2. Аудио (`.webm`) отправляется на `/stt`, бэкенд распознаёт речь через Whisper и возвращает текст.
-3. Текст отправляется на `/chat`, бэкенд проксирует его во внешний API (`policy_router_api`) и достаёт поле `bot_response`.
-4. Ответ отправляется на `/tts`, бэкенд синтезирует речь (mp3) и возвращает аудио, которое воспроизводится в браузере.
+1. Frontend отправляет текстовый запрос на `/api/chat`.
+2. Nginx проксирует запрос в FastAPI backend.
+3. Backend отправляет сообщение напрямую в OpenAI Chat Completions.
+4. Ответ возвращается в формате `{"answer": "..."}`.
 
-Сфера меняет цвет, интенсивность деформации и скорость анимации в зависимости от состояния (`idle`, `recording`, `thinking`, `speaking`).
+Голосовые функции `/stt` и `/tts` в текущей фазе не используются. Они будут добавлены позже через ElevenLabs.
+
 
 ## Структура проекта
 
 ```
 ai_sphere_avatar/
 ├── backend/
-│   ├── app.py            # Flask API: /stt, /chat, /tts
-│   ├── Dockerfile        # Python 3.9 + Gunicorn (4 воркера, порт 5000)
+│   ├── app.py            # FastAPI API: /, /chat
+│   ├── Dockerfile        # Python 3.11 + Uvicorn, порт 8000
 │   └── requirements.txt
 ├── frontend/
 │   ├── index.html        # UI + стили
@@ -39,14 +39,13 @@ ai_sphere_avatar/
 ├── nginx/
 │   └── nginx.conf        # Отдаёт фронтенд, проксирует /api/ на бэкенд
 ├── docker-compose.yml
-└── .env                  # OPENAI_API_KEY (не коммитить)
-```
+└── .env.example          # пример переменных окружения, без секретов
+
 
 ## Требования
 
 - Docker и Docker Compose
-- Ключ OpenAI API (используется для Whisper STT и TTS)
-- Запущенный внешний чат-API `policy_router_api`, доступный во внешней Docker-сети (см. ниже)
+- Ключ OpenAI API для обращения к OpenAI Chat Completions
 
 ## Настройка и запуск
 
@@ -58,17 +57,20 @@ ai_sphere_avatar/
 OPENAI_API_KEY=
 ```
 
-### 2. Внешняя Docker-сеть
+### 2. Docker-сеть
 
-Бэкенд подключается к двум сетям: внутренней (`avatar_front_net`) для связи с фронтендом и внешней (`existing_api_network`) для связи с чат-API. Имя внешней сети задаётся в [docker-compose.yml](docker-compose.yml):
+Backend и frontend работают в одной внутренней Docker-сети `avatar_front_net`.
+
+Внешняя Docker-сеть больше не используется, так как endpoint `/chat` теперь обращается напрямую к OpenAI Chat Completions.
 
 ```yaml
-existing_api_network:
-  external: true
-  name: avatar_default   # ← замените на имя сети вашего API
+networks:
+  avatar_front_net:
+    driver: bridge
 ```
 
-Узнать имя сети можно командой `docker network ls`. Сеть должна существовать до запуска (её создаёт проект с `policy_router_api`).
+В `docker-compose.yml` наружу публикуется только frontend/nginx на порту `8078`, а backend доступен только внутри Docker-сети по имени сервиса `avatar_front_backend`.
+
 
 ### 3. Запуск
 
@@ -80,29 +82,33 @@ docker compose up --build
 
 ## Конфигурация
 
-Параметры внешнего чат-API заданы прямо в коде ([backend/app.py](backend/app.py)):
+Параметры backend задаются через переменные окружения:
 
-```python
-NEW_API_URL = "http://policy_router_api:8079/chat"
-NEW_API_KEY = 
+```env
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+SYSTEM_PROMPT=
 ```
 
-При смене адреса/ключа внешнего API обновите эти значения.
+`OPENAI_API_KEY` нужен для прямого обращения к OpenAI Chat Completions.
+`OPENAI_MODEL` задаёт модель, по умолчанию используется `gpt-4o-mini`.
+`SYSTEM_PROMPT` задаёт системную инструкцию для ассистента.
+
 
 ## API бэкенда
 
 | Метод  | Endpoint | Тело запроса                       | Ответ                          |
 |--------|----------|------------------------------------|--------------------------------|
 | `GET`  | `/`      | —                                  | `{"status": "ok"}` (healthcheck) |
-| `POST` | `/stt`   | `multipart/form-data` поле `audio` | `{"text": "..."}`              |
-| `POST` | `/chat`  | `{"question": "..."}`              | `{"answer": "..."}`            |
-| `POST` | `/tts`   | `{"text": "..."}`                  | `audio/mpeg` (mp3)             |
+| `POST` | `/chat`  | `{"message": "..."}`              | `{"answer": "..."}`            |
+
 
 ## Стек технологий
 
-- **Фронтенд:** HTML, CSS, ванильный JS, Three.js 0.150, WebGL/GLSL-шейдеры, MediaRecorder API
-- **Бэкенд:** Python 3.9, Flask, Flask-CORS, Gunicorn, OpenAI SDK (Whisper `whisper-1`, TTS `tts-1`)
-- **Инфраструктура:** Docker, Docker Compose, Nginx (alpine)
+* **Фронтенд:** HTML, CSS, ванильный JS, Three.js 0.150, WebGL/GLSL-шейдеры, MediaRecorder API
+* **Бэкенд:** Python 3.11, FastAPI, Uvicorn, Pydantic, httpx, python-dotenv
+* **LLM:** OpenAI Chat Completions API, модель задаётся через `OPENAI_MODEL`
+* **Инфраструктура:** Docker, Docker Compose, Nginx (alpine)
 
 ## Примечания
 

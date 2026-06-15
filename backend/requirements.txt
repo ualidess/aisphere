@@ -1,6 +1,5 @@
-flask
-flask-cors
-openai
+fastapi
+uvicorn[standard]
+httpx
 python-dotenv
-requests
-gunicorn
+pydantic

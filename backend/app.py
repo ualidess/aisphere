@@ -1,91 +1,84 @@
 import os
-import tempfile
-import requests
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
-from openai import OpenAI
+
+import httpx
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
 
 load_dotenv()
-app = Flask(__name__)
-CORS(app)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+SYSTEM_PROMPT = os.getenv(
+    "SYSTEM_PROMPT",
+    "Ты полезный голосовой ассистент. Отвечай кратко, ясно и по существу.",
+)
 
-NEW_API_URL = os.getenv("NEW_API_URL")
-NEW_API_KEY = os.getenv("NEW_API_KEY")
+app = FastAPI(title="AI Sphere Avatar API")
 
-@app.route("/")
-def home():
-    return jsonify({"status": "ok", "message": "API is running"})
 
-@app.route("/stt", methods=["POST"])
-def stt():
-    if "audio" not in request.files:
-        return jsonify({"error": "No audio file provided"}), 400
-    audio_file = request.files["audio"]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
-        audio_file.save(tmp.name)
-        with open(tmp.name, "rb") as f:
-            try:
-                transcription = client.audio.transcriptions.create(model="whisper-1", file=f)
-                text = transcription.text
-            except Exception as e:
-                return jsonify({"error": f"Whisper Error: {e}"}), 500
-    os.remove(tmp.name)
-    print(f"[STT] Transcription: {text}")
-    return jsonify({"text": text})
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4000)
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    data = request.json
-    question = data.get("question", "")
-    if not question:
-        return jsonify({"error": "No question provided"}), 400
 
-    payload = {"user_message": question, "session_id": "default_session"}
-    headers = {"X-API-Key": NEW_API_KEY, "Content-Type": "application/json"}
-    print(f"[CHAT] Sending to new API: {payload}")
-    
+class ChatResponse(BaseModel):
+    answer: str
+
+
+@app.get("/")
+async def healthcheck():
+    return {"status": "ok", "message": "API is running"}
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    if not OPENAI_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="OPENAI_API_KEY is not configured",
+        )
+
+    payload = {
+        "model": OPENAI_MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": request.message},
+        ],
+        "temperature": 0.7,
+    }
+
     try:
-        r = requests.post(NEW_API_URL, headers=headers, json=payload, timeout=60)
-        r.raise_for_status()
-        
-        response_data = r.json()
-        
-        answer = response_data.get("bot_response", "Не удалось извлечь ответ из API.")
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
 
-    except requests.exceptions.RequestException as e:
-        print(f"[CHAT] API Request Error: {e}")
-        answer = f"Ошибка сети при обращении к API: {e}"
-    except Exception as e:
-        error_text = r.text if 'r' in locals() else str(e)
-        print(f"[CHAT] Error processing API response: {error_text}")
-        answer = "Ошибка: " + error_text
+        response.raise_for_status()
+        data = response.json()
+        answer = data["choices"][0]["message"]["content"]
 
-    print(f"[CHAT] Answer: {answer}")
-    return jsonify({"answer": answer})
+        return ChatResponse(answer=answer)
 
-@app.route("/tts", methods=["POST"])
-def tts():
-    data = request.json
-    text = data.get("text", "")
-    if not text:
-        return jsonify({"error": "No text to synthesize"}), 400
-    try:
-        speech_file_path = os.path.join(tempfile.gettempdir(), f"{os.urandom(16).hex()}.mp3")
-        with client.audio.speech.with_streaming_response.create(
-            model="tts-1",
-            voice="alloy",
-            input=text,
-        ) as response:
-            response.stream_to_file(speech_file_path)
-        
-        print(f"[TTS] File generated: {speech_file_path}")
-        return send_file(speech_file_path, mimetype="audio/mpeg", as_attachment=False)
-    except Exception as e:
-        print(f"[TTS] TTS Error: {e}")
-        return jsonify({"error": "Failed to generate speech"}), 500
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail="OpenAI API returned an error",
+        )
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=502,
+            detail="OpenAI API is unavailable",
+        )
+
+    except (KeyError, IndexError):
+        raise HTTPException(
+            status_code=502,
+            detail="Unexpected OpenAI API response format",
+        )
