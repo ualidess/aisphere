@@ -1,11 +1,32 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: avatar_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aisphere}
+      POSTGRES_USER: ${POSTGRES_USER:-aisphere}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aisphere_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aisphere} -d ${POSTGRES_DB:-aisphere}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - avatar_front_net
+
   backend:
     build: ./backend
     container_name: avatar_front_backend
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
-      - SYSTEM_PROMPT=${SYSTEM_PROMPT}
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
+      SYSTEM_PROMPT: "${SYSTEM_PROMPT}"
+      DATABASE_URL: "${DATABASE_URL:-postgresql+asyncpg://aisphere:aisphere_password@db:5432/aisphere}"
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - avatar_front_net
 
@@ -21,6 +42,9 @@ services:
       - backend
     networks:
       - avatar_front_net
+
+volumes:
+  postgres_data:
 
 networks:
   avatar_front_net:
