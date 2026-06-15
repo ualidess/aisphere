@@ -72,12 +72,12 @@ PostgreSQL (users, chats, messages)
 
 > Цель: заменить внешний API на OpenAI и перейти на асинхронный фреймворк.
 
-- [X] Поднять каркас FastAPI вместо Flask (один рабочий эндпоинт + healthcheck `/`).
-- [X] Реализовать `/chat`: запрос идёт напрямую в OpenAI Chat Completions (модель согласовать — по умолчанию недорогая, напр. `gpt-4o-mini`).
-- [X] Добавить системный промпт (роль ассистента) — вынести в конфиг.
-- [X] Все обращения к внешним API — асинхронные (httpx, без блокирующих вызовов).
-- [X] Убрать из кода и из `docker-compose.yml` всё, что связано с `policy_router_api` и external-сетью `existing_api_network`.
-- [X] Обновить Dockerfile бэкенда под FastAPI/Uvicorn.
+- [x] Поднять каркас FastAPI вместо Flask (один рабочий эндпоинт + healthcheck `/`).
+- [x] Реализовать `/chat`: запрос идёт напрямую в OpenAI Chat Completions (модель согласовать — по умолчанию недорогая, напр. `gpt-4o-mini`).
+- [x] Добавить системный промпт (роль ассистента) — вынести в конфиг.
+- [x] Все обращения к внешним API — асинхронные (httpx, без блокирующих вызовов).
+- [x] Убрать из кода и из `docker-compose.yml` всё, что связано с `policy_router_api` и external-сетью `existing_api_network`.
+- [x] Обновить Dockerfile бэкенда под FastAPI/Uvicorn.
 
 **Критерий приёмки:** `/chat` отвечает реальным ответом ChatGPT; внешний API и его сеть в проекте больше не используются; сервер использует async-вызовы через `httpx.AsyncClient`.
 
