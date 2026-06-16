@@ -5,6 +5,8 @@ from database import get_db
 from repositories import UserRepository
 from schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from security import create_access_token, get_password_hash, verify_password
+from dependencies import get_current_user
+from models import User
 from services import UserService
 
 
@@ -60,3 +62,12 @@ async def login(
     access_token = create_access_token(subject=str(user.id))
 
     return TokenResponse(access_token=access_token)
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(
+    current_user: User = Depends(get_current_user),
+):
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+    )
