@@ -22,9 +22,10 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    return os.getenv(
-        "DATABASE_URL",
-        "postgresql+asyncpg://aisphere:aisphere_password@db:5432/aisphere",
+    return (
+        os.getenv("ALEMBIC_DATABASE_URL")
+        or os.getenv("DATABASE_URL")
+        or "postgresql+asyncpg://aisphere:aisphere_password@db:5432/aisphere"
     )
 
 
