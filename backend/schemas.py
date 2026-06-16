@@ -19,3 +19,24 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     id: int
     email: str
+    
+class ChatCreateRequest(BaseModel):
+    title: str = "New chat"
+
+
+class ChatOut(BaseModel):
+    id: int
+    user_id: int
+    title: str
+
+
+class MessageCreateRequest(BaseModel):
+    role: str
+    content: str
+
+
+class MessageOut(BaseModel):
+    id: int
+    chat_id: int
+    role: str
+    content: str

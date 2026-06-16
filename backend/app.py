@@ -3,9 +3,11 @@ import os
 import httpx
 from dotenv import load_dotenv
 from auth import router as auth_router
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
+from chats import router as chats_router
+from dependencies import get_current_user
+from models import User
 
 load_dotenv()
 
@@ -19,6 +21,7 @@ SYSTEM_PROMPT = os.getenv(
 app = FastAPI(title="AI Sphere Avatar API")
 
 app.include_router(auth_router)
+app.include_router(chats_router)
 
 
 class ChatRequest(BaseModel):
@@ -35,7 +38,10 @@ async def healthcheck():
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+):
     if not OPENAI_API_KEY:
         raise HTTPException(
             status_code=500,
