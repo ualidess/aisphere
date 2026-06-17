@@ -9,7 +9,7 @@ class UserService:
     async def create_user(
         session: AsyncSession,
         email: str,
-        password_hash: str,
+        password_hash: str, 
     ) -> User:
         user = await UserRepository.create(
             session=session,
@@ -44,6 +44,32 @@ class ChatService:
             session=session,
             user_id=user_id,
         )
+    
+    @staticmethod
+    async def rename_chat(
+        session: AsyncSession,
+        chat: Chat,
+        title: str,
+    ) -> Chat:
+        updated_chat = await ChatRepository.update_title(
+            session=session,
+            chat=chat,
+            title=title,
+        )
+        await session.commit()
+        return updated_chat
+
+    @staticmethod
+    async def delete_chat(
+        session: AsyncSession,
+        chat: Chat,
+    ) -> None:
+        await ChatRepository.delete(
+            session=session,
+            chat=chat,
+        )
+        await session.commit()
+
 
 
 class MessageService:

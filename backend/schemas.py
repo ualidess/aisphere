@@ -20,8 +20,13 @@ class UserResponse(BaseModel):
     id: int
     email: str
     
+id="fllmts"
 class ChatCreateRequest(BaseModel):
-    title: str = "New chat"
+    title: str = Field(default="New chat", min_length=1, max_length=255)
+
+
+class ChatUpdateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
 
 
 class ChatOut(BaseModel):

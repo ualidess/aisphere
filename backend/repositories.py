@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,6 +48,28 @@ class ChatRepository:
             .order_by(Chat.updated_at.desc())
         )
         return list(result.scalars().all())
+    
+    @staticmethod
+    async def update_title(
+        session: AsyncSession,
+        chat: Chat,
+        title: str,
+    ) -> Chat:
+        chat.title = title
+        chat.updated_at = datetime.now(timezone.utc)
+
+        await session.flush()
+        await session.refresh(chat)
+        return chat
+
+    @staticmethod
+    async def delete(
+        session: AsyncSession,
+        chat: Chat,
+    ) -> None:
+        await session.delete(chat)
+        await session.flush()
+
 
 
 class MessageRepository:
@@ -58,9 +82,19 @@ class MessageRepository:
     ) -> Message:
         message = Message(chat_id=chat_id, role=role, content=content)
         session.add(message)
+
+        chat = await ChatRepository.get_by_id(
+            session=session,
+            chat_id=chat_id,
+        )
+
+        if chat is not None:
+            chat.updated_at = datetime.now(timezone.utc)
+
         await session.flush()
         await session.refresh(message)
         return message
+
 
     @staticmethod
     async def list_by_chat_id(session: AsyncSession, chat_id: int) -> list[Message]:
