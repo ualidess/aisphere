@@ -2,12 +2,21 @@
 // const API_BASE = "http://127.0.0.1:5000";
 
 // НА ОТНОСИТЕЛЬНЫЙ ПУТЬ. NGINX БУДЕТ ПЕРЕНАПРАВЛЯТЬ ЭТИ ЗАПРОСЫ
-const API_BASE = "/api"; 
+const API_BASE = "/api";
 
 // --- THREE.JS SCENE SETUP ---
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("scene"), antialias: true, alpha: true });
+const camera = new THREE.PerspectiveCamera(
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  1000,
+);
+const renderer = new THREE.WebGLRenderer({
+  canvas: document.getElementById("scene"),
+  antialias: true,
+  alpha: true,
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 camera.position.z = 4.5;
@@ -107,14 +116,18 @@ const sphereFragmentShader = `
 
 // --- SPHERE CREATION ---
 const uniforms = {
-    u_time: { value: 0.0 },
-    u_intensity: { value: 0.1 },
-    u_color1: { value: new THREE.Color("#4a00e0") },
-    u_color2: { value: new THREE.Color("#8e2de2") },
-    u_glow_color: { value: new THREE.Color("#00ffff") }
+  u_time: { value: 0.0 },
+  u_intensity: { value: 0.1 },
+  u_color1: { value: new THREE.Color("#4a00e0") },
+  u_color2: { value: new THREE.Color("#8e2de2") },
+  u_glow_color: { value: new THREE.Color("#00ffff") },
 };
 const sphereGeometry = new THREE.SphereGeometry(2.0, 128, 128);
-const sphereMaterial = new THREE.ShaderMaterial({ uniforms, vertexShader: sphereVertexShader, fragmentShader: sphereFragmentShader });
+const sphereMaterial = new THREE.ShaderMaterial({
+  uniforms,
+  vertexShader: sphereVertexShader,
+  fragmentShader: sphereFragmentShader,
+});
 const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
 scene.add(sphere);
 
@@ -132,7 +145,245 @@ const cancelBtn = document.getElementById("cancelBtn");
 const stopBtn = document.getElementById("stopBtn");
 const statusDiv = document.getElementById("status");
 
-const controls = document.getElementById("controls"); const authPanel = document.getElementById("auth-panel"); const emailInput = document.getElementById("emailInput"); const passwordInput = document.getElementById("passwordInput"); const loginBtn = document.getElementById("loginBtn"); const registerBtn = document.getElementById("registerBtn"); const logoutBtn = document.getElementById("logoutBtn"); const authError = document.getElementById("authError"); const chatSidebar = document.getElementById("chat-sidebar"); const newChatBtn = document.getElementById("newChatBtn"); const chatList = document.getElementById("chatList"); const messagesPanel = document.getElementById("messages-panel"); const messagesList = document.getElementById("messagesList"); let authToken = localStorage.getItem("access_token"); let currentChatId = Number(localStorage.getItem("current_chat_id")) || null; function authHeader() { return { Authorization: `Bearer ${authToken}`, }; } function jsonAuthHeaders() { return { "Content-Type": "application/json", Authorization: `Bearer ${authToken}`, }; } function setAuthError(message) { authError.textContent = message || ""; } function setLoggedInUI(isLoggedIn) { authPanel.classList.toggle("hidden", isLoggedIn); chatSidebar.classList.toggle("hidden", !isLoggedIn); messagesPanel.classList.toggle("hidden", !isLoggedIn); controls.classList.toggle("hidden", !isLoggedIn); } async function getErrorMessage(response) { try { const data = await response.json(); return data.detail || "Произошла ошибка"; } catch { return "Произошла ошибка"; } } async function loginOrRegister(mode) { setAuthError(""); const email = emailInput.value.trim(); const password = passwordInput.value; if (!email || !password) { setAuthError("Введите email и пароль"); return; } try { if (mode === "register") { const registerResponse = await fetch(`${API_BASE}/auth/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }), }); if (!registerResponse.ok) { throw new Error(await getErrorMessage(registerResponse)); } } const loginResponse = await fetch(`${API_BASE}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }), }); if (!loginResponse.ok) { throw new Error(await getErrorMessage(loginResponse)); } const loginData = await loginResponse.json(); authToken = loginData.access_token; localStorage.setItem("access_token", authToken); setLoggedInUI(true); await loadChats(); } catch (error) { setAuthError(error.message); } } function logout() { authToken = null; currentChatId = null; localStorage.removeItem("access_token"); localStorage.removeItem("current_chat_id"); chatList.innerHTML = ""; messagesList.innerHTML = ""; setLoggedInUI(false); } async function loadChats() { const response = await fetch(`${API_BASE}/chats`, { headers: authHeader(), }); if (response.status === 401) { logout(); return; } if (!response.ok) { throw new Error(await getErrorMessage(response)); } const chats = await response.json(); renderChats(chats); if (!currentChatId && chats.length > 0) { currentChatId = chats[0].id; localStorage.setItem("current_chat_id", String(currentChatId)); } if (currentChatId) { await loadMessages(currentChatId); } } function renderChats(chats) { chatList.innerHTML = ""; if (!chats.length) { chatList.innerHTML = `<div class="chat-item">Пока нет чатов</div>`; return; } for (const chat of chats) { const item = document.createElement("div"); item.className = `chat-item ${chat.id === currentChatId ? "active" : ""}`; const title = document.createElement("div"); title.className = "chat-title"; title.textContent = chat.title; const actions = document.createElement("div"); actions.className = "chat-actions"; const renameBtn = document.createElement("button"); renameBtn.type = "button"; renameBtn.textContent = "✎"; renameBtn.onclick = async (event) => { event.stopPropagation(); await renameChat(chat.id, chat.title); }; const deleteBtn = document.createElement("button"); deleteBtn.type = "button"; deleteBtn.textContent = "×"; deleteBtn.onclick = async (event) => { event.stopPropagation(); await deleteChat(chat.id); }; actions.appendChild(renameBtn); actions.appendChild(deleteBtn); item.appendChild(title); item.appendChild(actions); item.onclick = async () => { await selectChat(chat.id); }; chatList.appendChild(item); } } async function selectChat(chatId) { currentChatId = chatId; localStorage.setItem("current_chat_id", String(currentChatId)); await loadChats(); await loadMessages(chatId); } async function loadMessages(chatId) { const response = await fetch(`${API_BASE}/chats/${chatId}`, { headers: authHeader(), }); if (!response.ok) { messagesList.innerHTML = ""; return; } const messages = await response.json(); renderMessages(messages); } function renderMessages(messages) { messagesList.innerHTML = ""; if (!messages.length) { messagesList.innerHTML = `<div class="message-item">В этом чате пока нет сообщений</div>`; return; } for (const message of messages) { const item = document.createElement("div"); item.className = `message-item ${ message.role === "user" ? "message-user" : "message-assistant" }`; item.textContent = message.content; messagesList.appendChild(item); } messagesPanel.scrollTop = messagesPanel.scrollHeight; } async function createNewChat() { const response = await fetch(`${API_BASE}/chats`, { method: "POST", headers: jsonAuthHeaders(), body: JSON.stringify({ title: "New chat" }), }); if (!response.ok) { statusDiv.textContent = await getErrorMessage(response); return; } const chat = await response.json(); currentChatId = chat.id; localStorage.setItem("current_chat_id", String(currentChatId)); await loadChats(); await loadMessages(currentChatId); } async function renameChat(chatId, currentTitle) { const newTitle = prompt("Новое название чата", currentTitle); if (!newTitle || !newTitle.trim()) { return; } const response = await fetch(`${API_BASE}/chats/${chatId}`, { method: "PATCH", headers: jsonAuthHeaders(), body: JSON.stringify({ title: newTitle.trim() }), }); if (!response.ok) { statusDiv.textContent = await getErrorMessage(response); return; } await loadChats(); } async function deleteChat(chatId) { const confirmed = confirm("Удалить этот чат?"); if (!confirmed) { return; } const response = await fetch(`${API_BASE}/chats/${chatId}`, { method: "DELETE", headers: authHeader(), }); if (!response.ok && response.status !== 204) { statusDiv.textContent = await getErrorMessage(response); return; } if (currentChatId === chatId) { currentChatId = null; localStorage.removeItem("current_chat_id"); messagesList.innerHTML = ""; } await loadChats(); } loginBtn.onclick = () => loginOrRegister("login"); registerBtn.onclick = () => loginOrRegister("register"); logoutBtn.onclick = logout; newChatBtn.onclick = createNewChat; if (authToken) { setLoggedInUI(true); loadChats().catch((error) => { console.error(error); logout(); }); } else { setLoggedInUI(false); }
+const controls = document.getElementById("controls");
+const authPanel = document.getElementById("auth-panel");
+const emailInput = document.getElementById("emailInput");
+const passwordInput = document.getElementById("passwordInput");
+const loginBtn = document.getElementById("loginBtn");
+const registerBtn = document.getElementById("registerBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+const authError = document.getElementById("authError");
+const chatSidebar = document.getElementById("chat-sidebar");
+const newChatBtn = document.getElementById("newChatBtn");
+const chatList = document.getElementById("chatList");
+const messagesPanel = document.getElementById("messages-panel");
+const messagesList = document.getElementById("messagesList");
+let authToken = localStorage.getItem("access_token");
+let currentChatId = Number(localStorage.getItem("current_chat_id")) || null;
+function authHeader() {
+  return { Authorization: `Bearer ${authToken}` };
+}
+function jsonAuthHeaders() {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${authToken}`,
+  };
+}
+function setAuthError(message) {
+  authError.textContent = message || "";
+}
+function setLoggedInUI(isLoggedIn) {
+  authPanel.classList.toggle("hidden", isLoggedIn);
+  chatSidebar.classList.toggle("hidden", !isLoggedIn);
+  messagesPanel.classList.toggle("hidden", !isLoggedIn);
+  controls.classList.toggle("hidden", !isLoggedIn);
+}
+async function getErrorMessage(response) {
+  try {
+    const data = await response.json();
+    return data.detail || "Произошла ошибка";
+  } catch {
+    return "Произошла ошибка";
+  }
+}
+async function loginOrRegister(mode) {
+  setAuthError("");
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  if (!email || !password) {
+    setAuthError("Введите email и пароль");
+    return;
+  }
+  try {
+    if (mode === "register") {
+      const registerResponse = await fetch(`${API_BASE}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!registerResponse.ok) {
+        throw new Error(await getErrorMessage(registerResponse));
+      }
+    }
+    const loginResponse = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!loginResponse.ok) {
+      throw new Error(await getErrorMessage(loginResponse));
+    }
+    const loginData = await loginResponse.json();
+    authToken = loginData.access_token;
+    localStorage.setItem("access_token", authToken);
+    setLoggedInUI(true);
+    await loadChats();
+  } catch (error) {
+    setAuthError(error.message);
+  }
+}
+function logout() {
+  authToken = null;
+  currentChatId = null;
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("current_chat_id");
+  chatList.innerHTML = "";
+  messagesList.innerHTML = "";
+  setLoggedInUI(false);
+}
+async function loadChats() {
+  const response = await fetch(`${API_BASE}/chats`, { headers: authHeader() });
+  if (response.status === 401) {
+    logout();
+    return;
+  }
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response));
+  }
+  const chats = await response.json();
+  renderChats(chats);
+  if (!currentChatId && chats.length > 0) {
+    currentChatId = chats[0].id;
+    localStorage.setItem("current_chat_id", String(currentChatId));
+  }
+  if (currentChatId) {
+    await loadMessages(currentChatId);
+  }
+}
+function renderChats(chats) {
+  chatList.innerHTML = "";
+  if (!chats.length) {
+    chatList.innerHTML = `<div class="chat-item">Пока нет чатов</div>`;
+    return;
+  }
+  for (const chat of chats) {
+    const item = document.createElement("div");
+    item.className = `chat-item ${chat.id === currentChatId ? "active" : ""}`;
+    const title = document.createElement("div");
+    title.className = "chat-title";
+    title.textContent = chat.title;
+    const actions = document.createElement("div");
+    actions.className = "chat-actions";
+    const renameBtn = document.createElement("button");
+    renameBtn.type = "button";
+    renameBtn.textContent = "✎";
+    renameBtn.onclick = async (event) => {
+      event.stopPropagation();
+      await renameChat(chat.id, chat.title);
+    };
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "×";
+    deleteBtn.onclick = async (event) => {
+      event.stopPropagation();
+      await deleteChat(chat.id);
+    };
+    actions.appendChild(renameBtn);
+    actions.appendChild(deleteBtn);
+    item.appendChild(title);
+    item.appendChild(actions);
+    item.onclick = async () => {
+      await selectChat(chat.id);
+    };
+    chatList.appendChild(item);
+  }
+}
+async function selectChat(chatId) {
+  currentChatId = chatId;
+  localStorage.setItem("current_chat_id", String(currentChatId));
+  await loadChats();
+  await loadMessages(chatId);
+}
+async function loadMessages(chatId) {
+  const response = await fetch(`${API_BASE}/chats/${chatId}`, {
+    headers: authHeader(),
+  });
+  if (!response.ok) {
+    messagesList.innerHTML = "";
+    return;
+  }
+  const messages = await response.json();
+  renderMessages(messages);
+}
+function renderMessages(messages) {
+  messagesList.innerHTML = "";
+  if (!messages.length) {
+    messagesList.innerHTML = `<div class="message-item">В этом чате пока нет сообщений</div>`;
+    return;
+  }
+  for (const message of messages) {
+    const item = document.createElement("div");
+    item.className = `message-item ${message.role === "user" ? "message-user" : "message-assistant"}`;
+    item.textContent = message.content;
+    messagesList.appendChild(item);
+  }
+  messagesPanel.scrollTop = messagesPanel.scrollHeight;
+}
+async function createNewChat() {
+  const response = await fetch(`${API_BASE}/chats`, {
+    method: "POST",
+    headers: jsonAuthHeaders(),
+    body: JSON.stringify({ title: "New chat" }),
+  });
+  if (!response.ok) {
+    statusDiv.textContent = await getErrorMessage(response);
+    return;
+  }
+  const chat = await response.json();
+  currentChatId = chat.id;
+  localStorage.setItem("current_chat_id", String(currentChatId));
+  await loadChats();
+  await loadMessages(currentChatId);
+}
+async function renameChat(chatId, currentTitle) {
+  const newTitle = prompt("Новое название чата", currentTitle);
+  if (!newTitle || !newTitle.trim()) {
+    return;
+  }
+  const response = await fetch(`${API_BASE}/chats/${chatId}`, {
+    method: "PATCH",
+    headers: jsonAuthHeaders(),
+    body: JSON.stringify({ title: newTitle.trim() }),
+  });
+  if (!response.ok) {
+    statusDiv.textContent = await getErrorMessage(response);
+    return;
+  }
+  await loadChats();
+}
+async function deleteChat(chatId) {
+  const confirmed = confirm("Удалить этот чат?");
+  if (!confirmed) {
+    return;
+  }
+  const response = await fetch(`${API_BASE}/chats/${chatId}`, {
+    method: "DELETE",
+    headers: authHeader(),
+  });
+  if (!response.ok && response.status !== 204) {
+    statusDiv.textContent = await getErrorMessage(response);
+    return;
+  }
+  if (currentChatId === chatId) {
+    currentChatId = null;
+    localStorage.removeItem("current_chat_id");
+    messagesList.innerHTML = "";
+  }
+  await loadChats();
+}
+loginBtn.onclick = () => loginOrRegister("login");
+registerBtn.onclick = () => loginOrRegister("register");
+logoutBtn.onclick = logout;
+newChatBtn.onclick = createNewChat;
+if (authToken) {
+  setLoggedInUI(true);
+  loadChats().catch((error) => {
+    console.error(error);
+    logout();
+  });
+} else {
+  setLoggedInUI(false);
+}
 
 function updateUI() {
   statusDiv.textContent = {
@@ -140,13 +391,16 @@ function updateUI() {
     recording: "Идет запись... Нажмите 'Закончить', когда будете готовы",
     thinking: "Думаю...",
     speaking: "Отвечаю...",
-    recorded: "Запись завершена, нажмите 'Отправить'"
+    recorded: "Запись завершена, нажмите 'Отправить'",
   }[state];
 
   askBtn.classList.toggle("hidden", state !== "idle");
   sendBtn.classList.toggle("hidden", state !== "recorded");
   finishRecBtn.classList.toggle("hidden", state !== "recording");
-  cancelBtn.classList.toggle("hidden", !["recording", "recorded"].includes(state));
+  cancelBtn.classList.toggle(
+    "hidden",
+    !["recording", "recorded"].includes(state),
+  );
   stopBtn.classList.toggle("hidden", state !== "speaking");
 }
 
@@ -154,130 +408,186 @@ function updateUI() {
 const clock = new THREE.Clock();
 let targetIntensity = 0.1;
 function animate() {
-    const elapsedTime = clock.getElapsedTime();
-    uniforms.u_time.value = elapsedTime;
-    uniforms.u_intensity.value += (targetIntensity - uniforms.u_intensity.value) * 0.05;
-    let color1 = new THREE.Color(), color2 = new THREE.Color(), glowColor = new THREE.Color();
-    switch (state) {
-        case "recording":
-            targetIntensity = 0.2;
-            color1.set("#FFD700"); color2.set("#FFA500"); glowColor.set("#FFFFFF");
-            break;
-        case "thinking":
-            targetIntensity = 0.25;
-            uniforms.u_time.value = elapsedTime * 1.5;
-            color1.set("#8A2BE2"); color2.set("#FF00FF"); glowColor.set("#FFFFFF");
-            break;
-        case "speaking":
-            targetIntensity = 0.15 + Math.abs(Math.sin(elapsedTime * 10.0)) * 0.1;
-            color1.set("#00BFFF"); color2.set("#1E90FF"); glowColor.set("#AFEEEE");
-            break;
-        default:
-            targetIntensity = 0.1 + Math.sin(elapsedTime * 0.5) * 0.05;
-            color1.set("#8A2BE2"); color2.set("#4B0082"); glowColor.set("#00ffff");
-            break;
-    }
-    uniforms.u_color1.value.lerp(color1, 0.1);
-    uniforms.u_color2.value.lerp(color2, 0.1);
-    uniforms.u_glow_color.value.lerp(glowColor, 0.1);
-    renderer.render(scene, camera);
-    requestAnimationFrame(animate);
+  const elapsedTime = clock.getElapsedTime();
+  uniforms.u_time.value = elapsedTime;
+  uniforms.u_intensity.value +=
+    (targetIntensity - uniforms.u_intensity.value) * 0.05;
+  let color1 = new THREE.Color(),
+    color2 = new THREE.Color(),
+    glowColor = new THREE.Color();
+  switch (state) {
+    case "recording":
+      targetIntensity = 0.2;
+      color1.set("#FFD700");
+      color2.set("#FFA500");
+      glowColor.set("#FFFFFF");
+      break;
+    case "thinking":
+      targetIntensity = 0.25;
+      uniforms.u_time.value = elapsedTime * 1.5;
+      color1.set("#8A2BE2");
+      color2.set("#FF00FF");
+      glowColor.set("#FFFFFF");
+      break;
+    case "speaking":
+      targetIntensity = 0.15 + Math.abs(Math.sin(elapsedTime * 10.0)) * 0.1;
+      color1.set("#00BFFF");
+      color2.set("#1E90FF");
+      glowColor.set("#AFEEEE");
+      break;
+    default:
+      targetIntensity = 0.1 + Math.sin(elapsedTime * 0.5) * 0.05;
+      color1.set("#8A2BE2");
+      color2.set("#4B0082");
+      glowColor.set("#00ffff");
+      break;
+  }
+  uniforms.u_color1.value.lerp(color1, 0.1);
+  uniforms.u_color2.value.lerp(color2, 0.1);
+  uniforms.u_glow_color.value.lerp(glowColor, 0.1);
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
 }
 animate();
 updateUI();
 
 // --- EVENT LISTENERS ---
 askBtn.onclick = async () => {
-    if (!mediaStream) {
-        try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        } catch (err) {
-            statusDiv.textContent = "Ошибка: микрофон не доступен.";
-            console.error("Microphone access error:", err);
-            return;
-        }
+  if (!mediaStream) {
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      statusDiv.textContent = "Ошибка: микрофон не доступен.";
+      console.error("Microphone access error:", err);
+      return;
     }
-    mediaRecorder = new MediaRecorder(mediaStream);
-    audioChunks = [];
-    mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-    mediaRecorder.onstop = () => {
-        if (state === 'recording') {
-            state = "recorded";
-            updateUI();
-        }
-    };
-    mediaRecorder.start();
-    state = "recording";
-    updateUI();
-    setTimeout(() => { if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); } }, 5000);
+  }
+  mediaRecorder = new MediaRecorder(mediaStream);
+  audioChunks = [];
+  mediaRecorder.ondataavailable = (event) => audioChunks.push(event.data);
+  mediaRecorder.onstop = () => {
+    if (state === "recording") {
+      state = "recorded";
+      updateUI();
+    }
+  };
+  mediaRecorder.start();
+  state = "recording";
+  updateUI();
+  setTimeout(() => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+    }
+  }, 5000);
 };
 
 finishRecBtn.onclick = () => {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-        mediaRecorder.stop();
-    }
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+  }
 };
 
 sendBtn.onclick = async () => {
-    state = "thinking";
-    updateUI();
-    const formData = new FormData();
-    formData.append("audio", new Blob(audioChunks, { type: "audio/webm" }));
-    try {
-        const sttRes = await fetch(`${API_BASE}/stt`, { method: "POST", body: formData });
-        const sttData = await sttRes.json();
+  if (!authToken) {
+    statusDiv.textContent = "Сначала войдите в аккаунт";
+    return;
+  }
 
-        // <<<--- ВОТ ИСПРАВЛЕННАЯ СТРОКА ---
-        const chatRes = await fetch(`${API_BASE}/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ question: sttData.text }),
-        });
-        
-        const chatData = await chatRes.json();
+  state = "thinking";
+  updateUI();
 
-        const ttsRes = await fetch(`${API_BASE}/tts`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: chatData.answer }),
-        });
-        const audioBlob = await ttsRes.blob();
-        audio = new Audio(URL.createObjectURL(audioBlob));
-        state = "speaking";
-        updateUI();
-        audio.play();
-        audio.onended = () => {
-            state = "idle";
-            updateUI();
-        };
-    } catch (error) {
-        console.error("API Error:", error);
-        statusDiv.textContent = "Произошла ошибка";
-        state = "idle";
-        updateUI();
+  const formData = new FormData();
+  formData.append("audio", new Blob(audioChunks, { type: "audio/webm" }));
+
+  try {
+    const sttRes = await fetch(`${API_BASE}/stt`, {
+      method: "POST",
+      headers: authHeader(),
+      body: formData,
+    });
+
+    if (!sttRes.ok) {
+      throw new Error(await getErrorMessage(sttRes));
     }
+
+    const sttData = await sttRes.json();
+    const userText = sttData.text;
+
+    if (!userText) {
+      throw new Error("Не удалось распознать речь");
+    }
+
+    const chatRes = await fetch(`${API_BASE}/chat`, {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: JSON.stringify({
+        message: userText,
+        chat_id: currentChatId,
+      }),
+    });
+
+    if (!chatRes.ok) {
+      throw new Error(await getErrorMessage(chatRes));
+    }
+
+    const chatData = await chatRes.json();
+
+    currentChatId = chatData.chat_id;
+    localStorage.setItem("current_chat_id", String(currentChatId));
+
+    await loadChats();
+    await loadMessages(currentChatId);
+
+    const ttsRes = await fetch(`${API_BASE}/tts`, {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: JSON.stringify({ text: chatData.answer }),
+    });
+
+    if (!ttsRes.ok) {
+      throw new Error(await getErrorMessage(ttsRes));
+    }
+
+    const audioBlob = await ttsRes.blob();
+    audio = new Audio(URL.createObjectURL(audioBlob));
+
+    state = "speaking";
+    updateUI();
+
+    audio.play();
+
+    audio.onended = () => {
+      state = "idle";
+      updateUI();
+    };
+  } catch (error) {
+    console.error("API Error:", error);
+    statusDiv.textContent = error.message || "Произошла ошибка";
+    state = "idle";
+    updateUI();
+  }
 };
 
 cancelBtn.onclick = () => {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-        mediaRecorder.stop();
-    }
-    audioChunks = [];
-    state = "idle";
-    updateUI();
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+  }
+  audioChunks = [];
+  state = "idle";
+  updateUI();
 };
 
 stopBtn.onclick = () => {
-    if (audio) {
-        audio.pause();
-        audio.currentTime = 0;
-    }
-    state = "idle";
-    updateUI();
+  if (audio) {
+    audio.pause();
+    audio.currentTime = 0;
+  }
+  state = "idle";
+  updateUI();
 };
 
 window.onresize = () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 };
