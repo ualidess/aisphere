@@ -2,12 +2,18 @@ import os
 
 import httpx
 from dotenv import load_dotenv
-from auth import router as auth_router
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from auth import router as auth_router
 from chats import router as chats_router
+from database import get_db
 from dependencies import get_current_user
 from models import User
+from repositories import ChatRepository, MessageRepository
+from services import ChatService, MessageService
+
 
 load_dotenv()
 
@@ -26,10 +32,12 @@ app.include_router(chats_router)
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
+    chat_id: int | None = None
 
 
 class ChatResponse(BaseModel):
     answer: str
+    chat_id: int
 
 
 @app.get("/")
@@ -41,6 +49,7 @@ async def healthcheck():
 async def chat(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
 ):
     if not OPENAI_API_KEY:
         raise HTTPException(
@@ -48,12 +57,53 @@ async def chat(
             detail="OPENAI_API_KEY is not configured",
         )
 
+    if request.chat_id is None:
+        chat_title = request.message[:60]
+
+        chat_record = await ChatService.create_chat(
+            session=session,
+            user_id=current_user.id,
+            title=chat_title,
+        )
+    else:
+        chat_record = await ChatRepository.get_by_id(
+            session=session,
+            chat_id=request.chat_id,
+        )
+
+        if chat_record is None or chat_record.user_id != current_user.id:
+            raise HTTPException(
+                status_code=404,
+                detail="Chat not found",
+            )
+
+    await MessageService.create_message(
+        session=session,
+        chat_id=chat_record.id,
+        role="user",
+        content=request.message,
+    )
+
+    history = await MessageRepository.list_by_chat_id(
+        session=session,
+        chat_id=chat_record.id,
+    )
+
+    openai_messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+    ]
+
+    for message in history[-20:]:
+        openai_messages.append(
+            {
+                "role": message.role,
+                "content": message.content,
+            }
+        )
+
     payload = {
         "model": OPENAI_MODEL,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": request.message},
-        ],
+        "messages": openai_messages,
         "temperature": 0.7,
     }
 
@@ -72,22 +122,32 @@ async def chat(
         data = response.json()
         answer = data["choices"][0]["message"]["content"]
 
-        return ChatResponse(answer=answer)
-
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=exc.response.status_code,
-            detail="OpenAI API returned an error",
-        )
+            detail=exc.response.text,
+        ) from exc
 
-    except httpx.RequestError:
+    except httpx.RequestError as exc:
         raise HTTPException(
             status_code=502,
-            detail="OpenAI API is unavailable",
-        )
+            detail=f"OpenAI request failed: {exc}",
+        ) from exc
 
-    except (KeyError, IndexError):
+    except (KeyError, IndexError) as exc:
         raise HTTPException(
             status_code=502,
             detail="Unexpected OpenAI API response format",
-        )
+        ) from exc
+
+    await MessageService.create_message(
+        session=session,
+        chat_id=chat_record.id,
+        role="assistant",
+        content=answer,
+    )
+
+    return ChatResponse(
+        answer=answer,
+        chat_id=chat_record.id,
+    )
