@@ -96,8 +96,173 @@
         font-weight: 300;
         backdrop-filter: blur(6px);
       }
+      #auth-panel {
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(8px);
+      }
+
+      .auth-card {
+        width: 320px;
+        padding: 24px;
+        border-radius: 24px;
+        background: rgba(25, 25, 35, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
+      }
+
+      .auth-title {
+        font-size: 24px;
+        font-weight: 600;
+        text-align: center;
+        margin-bottom: 4px;
+      }
+
+      .auth-card input {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: white;
+        padding: 12px 14px;
+        border-radius: 14px;
+        outline: none;
+        font-size: 14px;
+      }
+
+      .auth-card input::placeholder {
+        color: rgba(255, 255, 255, 0.45);
+      }
+
+      .auth-buttons {
+        display: flex;
+        gap: 10px;
+      }
+
+      .auth-buttons button {
+        flex: 1;
+        justify-content: center;
+        padding: 10px 12px;
+        font-size: 14px;
+      }
+
+      #authError {
+        min-height: 18px;
+        color: #ff8a8a;
+        font-size: 13px;
+        text-align: center;
+      }
+
+      #chat-sidebar {
+        position: absolute;
+        left: 20px;
+        top: 20px;
+        bottom: 20px;
+        width: 280px;
+        z-index: 12;
+        padding: 18px;
+        border-radius: 24px;
+        background: rgba(20, 20, 28, 0.58);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(8px);
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      #logoutBtn,
+      #newChatBtn {
+        justify-content: center;
+        padding: 9px 12px;
+        font-size: 13px;
+      }
+
+      #chatList {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow-y: auto;
+      }
+
+      .chat-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.06);
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      .chat-item.active {
+        background: rgba(142, 45, 226, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+      }
+
+      .chat-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .chat-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .chat-actions button {
+        padding: 4px 7px;
+        font-size: 12px;
+      }
+
+      #messages-panel {
+        position: absolute;
+        right: 20px;
+        top: 78px;
+        bottom: 150px;
+        width: 340px;
+        z-index: 11;
+        padding: 16px;
+        border-radius: 24px;
+        background: rgba(20, 20, 28, 0.42);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(8px);
+        overflow-y: auto;
+      }
+
+      .message-item {
+        margin-bottom: 10px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .message-user {
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .message-assistant {
+        background: rgba(142, 45, 226, 0.22);
+      }
       .hidden {
-        display: none;
+        display: none !important;
       }
     </style>
   </head>
@@ -105,6 +270,29 @@
     <div id="ai-container">
       <canvas id="scene"></canvas>
       <div class="retention-note">Чаты хранятся 72 часа</div>
+      <div id="auth-panel">
+        <div class="auth-card">
+          <div class="auth-title">AI Sphere</div>
+          <input id="emailInput" type="email" placeholder="Email" />
+          <input id="passwordInput" type="password" placeholder="Password" />
+          <div class="auth-buttons">
+            <button id="loginBtn" type="button">Войти</button>
+            <button id="registerBtn" type="button">Регистрация</button>
+          </div>
+          <div id="authError"></div>
+        </div>
+      </div>
+      <div id="chat-sidebar" class="hidden">
+        <div class="sidebar-header">
+          <div>Чаты</div>
+          <button id="logoutBtn" type="button">Выйти</button>
+        </div>
+        <button id="newChatBtn" type="button">+ Новый чат</button>
+        <div id="chatList"></div>
+      </div>
+      <div id="messages-panel" class="hidden">
+        <div id="messagesList"></div>
+      </div>
       <div id="controls">
         <div id="status">Нажмите 'Задать вопрос', чтобы начать</div>
         <div class="button-row">
