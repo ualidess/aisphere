@@ -1,4 +1,6 @@
+import asyncio
 import os
+from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
@@ -8,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import router as auth_router
 from chats import router as chats_router
+from cleanup import cleanup_expired_chats_loop
 from database import get_db
 from dependencies import get_current_user
 from models import User
@@ -24,7 +27,27 @@ SYSTEM_PROMPT = os.getenv(
     "Ты полезный голосовой ассистент. Отвечай кратко, ясно и по существу.",
 )
 
-app = FastAPI(title="AI Sphere Avatar API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    cleanup_task = asyncio.create_task(cleanup_expired_chats_loop())
+
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
+
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(
+    title="AI Sphere Avatar API",
+    lifespan=lifespan,
+)
+
 
 app.include_router(auth_router)
 app.include_router(chats_router)
