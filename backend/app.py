@@ -1,13 +1,16 @@
 import asyncio
-import os
 import logging
+import os
+import time
+import uuid
 from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import Response
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import router as auth_router
@@ -15,12 +18,14 @@ from chats import router as chats_router
 from cleanup import cleanup_expired_chats_loop
 from database import get_db
 from dependencies import get_current_user
+from logging_config import request_id_ctx_var, setup_logging
 from models import User
 from repositories import ChatRepository, MessageRepository
 from services import ChatService, MessageService
 
 
 load_dotenv()
+setup_logging()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -62,6 +67,32 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(chats_router)
 
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    token = request_id_ctx_var.set(request_id)
+    start_time = time.perf_counter()
+
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+        response.headers["X-Request-ID"] = request_id
+
+        logger.info(
+            "request_finished",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+            },
+        )
+
+        return response
+    finally:
+        request_id_ctx_var.reset(token)
+
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
@@ -81,6 +112,25 @@ class TTSRequest(BaseModel):
 async def healthcheck():
     return {"status": "ok", "message": "API is running"}
 
+@app.get("/health")
+async def healthcheck(db: AsyncSession = Depends(get_db)):
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.exception("Database healthcheck failed")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "database": "unavailable",
+            },
+        )
+
+    return {
+        "status": "ok",
+        "database": "ok",
+    }
+
 @app.post("/stt")
 async def stt(
     audio: UploadFile = File(...),
@@ -94,7 +144,10 @@ async def stt(
 
     audio_bytes = await audio.read()
 
+
     try:
+        external_start = time.perf_counter()
+
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 "https://api.elevenlabs.io/v1/speech-to-text",
@@ -108,9 +161,22 @@ async def stt(
                     )
                 },
             )
+
+            external_duration_ms = round((time.perf_counter() - external_start) * 1000, 2)
+            logger.info(
+                "external_api_finished",
+                extra={
+                    "external_api": "elevenlabs_stt",
+                    "status_code": response.status_code,
+                    "duration_ms": external_duration_ms,
+                },
+            )
+
             if response.status_code >= 400:
                 logger.error("ElevenLabs STT error: %s", response.text)
+
             response.raise_for_status()
+
     except httpx.HTTPError as exc:
         logger.exception("ElevenLabs STT request failed")
         raise HTTPException(
@@ -128,6 +194,7 @@ async def stt(
         )
 
     return {"text": text}
+
 
 
 
