@@ -67,6 +67,7 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(chats_router)
 
+
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
@@ -109,7 +110,7 @@ class TTSRequest(BaseModel):
 
 
 @app.get("/")
-async def healthcheck():
+async def root():
     return {"status": "ok", "message": "API is running"}
 
 @app.get("/health")
@@ -216,6 +217,8 @@ async def tts(
         )
 
     try:
+        external_start = time.perf_counter()
+
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}/stream",
@@ -227,6 +230,15 @@ async def tts(
                 json={
                     "text": request.text,
                     "model_id": ELEVENLABS_TTS_MODEL,
+                },
+            )
+            external_duration_ms = round((time.perf_counter() - external_start) * 1000, 2)
+            logger.info(
+                "external_api_finished",
+                extra={
+                    "external_api": "elevenlabs_tts",
+                    "status_code": response.status_code,
+                    "duration_ms": external_duration_ms,
                 },
             )
             if response.status_code >= 400:
@@ -304,6 +316,8 @@ async def chat(
     }
 
     try:
+        external_start = time.perf_counter()
+
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -314,23 +328,39 @@ async def chat(
                 json=payload,
             )
 
+        external_duration_ms = round((time.perf_counter() - external_start) * 1000, 2)
+        logger.info(
+            "external_api_finished",
+            extra={
+                "external_api": "openai_chat",
+                "status_code": response.status_code,
+                "duration_ms": external_duration_ms,
+            },
+        )
+
+        if response.status_code >= 400:
+            logger.error("OpenAI Chat error: %s", response.text)
+
         response.raise_for_status()
         data = response.json()
         answer = data["choices"][0]["message"]["content"]
 
     except httpx.HTTPStatusError as exc:
+        logger.exception("OpenAI Chat request failed")
         raise HTTPException(
             status_code=exc.response.status_code,
-            detail=exc.response.text,
+            detail="OpenAI request failed",
         ) from exc
 
     except httpx.RequestError as exc:
+        logger.exception("OpenAI Chat connection failed")
         raise HTTPException(
             status_code=502,
-            detail=f"OpenAI request failed: {exc}",
+            detail="OpenAI request failed",
         ) from exc
 
     except (KeyError, IndexError) as exc:
+        logger.exception("Unexpected OpenAI API response format")
         raise HTTPException(
             status_code=502,
             detail="Unexpected OpenAI API response format",
