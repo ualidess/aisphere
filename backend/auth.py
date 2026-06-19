@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from rate_limit import check_rate_limit
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -46,8 +47,17 @@ async def register(
 @router.post("/login", response_model=TokenResponse)
 async def login(
     payload: LoginRequest,
+    http_request: Request,
     session: AsyncSession = Depends(get_db),
 ):
+    await check_rate_limit(
+        request=http_request,
+        endpoint="auth_login",
+        limit=5,
+        window_seconds=60,
+        user_id=None,
+    )
+
     user = await UserRepository.get_by_email(
         session=session,
         email=payload.email,
@@ -62,6 +72,7 @@ async def login(
     access_token = create_access_token(subject=str(user.id))
 
     return TokenResponse(access_token=access_token)
+
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(

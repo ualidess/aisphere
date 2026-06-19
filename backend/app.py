@@ -22,6 +22,7 @@ from database import get_db
 from dependencies import get_current_user
 from logging_config import request_id_ctx_var, setup_logging
 from models import User
+from rate_limit import check_rate_limit
 from repositories import ChatRepository, MessageRepository
 from services import ChatService, MessageService
 
@@ -209,9 +210,17 @@ async def healthcheck(db: AsyncSession = Depends(get_db)):
 
 @app.post("/stt")
 async def stt(
+    request: Request,
     audio: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
+    await check_rate_limit(
+        request=request,
+        endpoint="stt",
+        limit=10,
+        window_seconds=60,
+        user_id=current_user.id,
+    )
     if not ELEVENLABS_API_KEY:
         raise HTTPException(
             status_code=500,
@@ -273,12 +282,20 @@ async def stt(
 
 
 
-
 @app.post("/tts")
 async def tts(
-    request: TTSRequest,
+    request_data: TTSRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
 ):
+    await check_rate_limit(
+        request=request,
+        endpoint="tts",
+        limit=20,
+        window_seconds=60,
+        user_id=current_user.id,
+    )
+
     if not ELEVENLABS_API_KEY:
         raise HTTPException(
             status_code=500,
@@ -303,7 +320,7 @@ async def tts(
                     "Content-Type": "application/json",
                 },
                 json={
-                    "text": request.text,
+                    "text": request_data.text,
                     "model_id": ELEVENLABS_TTS_MODEL,
                 },
             )
@@ -331,14 +348,24 @@ async def tts(
 @app.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
+    http_request: Request,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
+    await check_rate_limit(
+        request=http_request,
+        endpoint="chat",
+        limit=30,
+        window_seconds=60,
+        user_id=current_user.id,
+    )
+
     if not OPENAI_API_KEY:
         raise HTTPException(
             status_code=500,
             detail="OPENAI_API_KEY is not configured",
         )
+
 
     if request.chat_id is None:
         chat_title = request.message[:60]
