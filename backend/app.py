@@ -8,10 +8,12 @@ from contextlib import asynccontextmanager
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from auth import router as auth_router
 from chats import router as chats_router
@@ -93,6 +95,79 @@ async def request_id_middleware(request: Request, call_next):
         return response
     finally:
         request_id_ctx_var.reset(token)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    logger.warning(
+        "http_exception",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": exc.status_code,
+            "error": str(exc.detail),
+        },
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": exc.status_code,
+                "message": exc.detail if isinstance(exc.detail, str) else "Request failed",
+                "request_id": request_id_ctx_var.get(),
+            }
+        },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(
+        "validation_error",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": 422,
+            "error": "Invalid request data",
+        },
+    )
+
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": 422,
+                "message": "Invalid request data",
+                "request_id": request_id_ctx_var.get(),
+            }
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception(
+        "unhandled_exception",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": 500,
+            "error": type(exc).__name__,
+        },
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": 500,
+                "message": "Internal server error",
+                "request_id": request_id_ctx_var.get(),
+            }
+        },
+    )
+
 
 
 class ChatRequest(BaseModel):
