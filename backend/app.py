@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -50,6 +51,14 @@ ALLOWED_AUDIO_CONTENT_TYPES = {
     "audio/mp3",
     "audio/ogg",
 }
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:8078,http://127.0.0.1:8078",
+    ).split(",")
+    if origin.strip()
+]
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +81,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI Sphere Avatar API",
     lifespan=lifespan,
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 
 
@@ -236,7 +252,7 @@ async def stt(
         )
 
     audio_bytes = await audio.read()
-    
+
     if len(audio_bytes) > MAX_AUDIO_UPLOAD_BYTES:
         raise HTTPException(
             status_code=413,
