@@ -42,6 +42,14 @@ ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")
 ELEVENLABS_TTS_MODEL = os.getenv("ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2")
 ELEVENLABS_STT_MODEL = os.getenv("ELEVENLABS_STT_MODEL", "scribe_v1")
 ELEVENLABS_OUTPUT_FORMAT = os.getenv("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128")
+MAX_AUDIO_UPLOAD_BYTES = int(os.getenv("MAX_AUDIO_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+ALLOWED_AUDIO_CONTENT_TYPES = {
+    "audio/webm",
+    "audio/wav",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/ogg",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +236,18 @@ async def stt(
         )
 
     audio_bytes = await audio.read()
+    
+    if len(audio_bytes) > MAX_AUDIO_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Audio file is too large.",
+        )
+
+    if audio.content_type not in ALLOWED_AUDIO_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail="Unsupported audio format.",
+        )
 
 
     try:
