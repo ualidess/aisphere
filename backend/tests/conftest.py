@@ -17,6 +17,7 @@ os.environ.setdefault("ELEVENLABS_API_KEY", "test-elevenlabs-key")
 @pytest.fixture
 async def client():
     from app import app
+    from database import engine
 
     transport = ASGITransport(app=app)
 
@@ -25,3 +26,6 @@ async def client():
         base_url="http://test",
     ) as async_client:
         yield async_client
+
+    app.dependency_overrides.clear()
+    await engine.dispose()
