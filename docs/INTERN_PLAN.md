@@ -194,9 +194,9 @@ PostgreSQL (users, chats, messages)
 
 ## Фаза 9 — Тесты, документация, финальная сборка
 
-- [ ] Базовые тесты: авторизация, CRUD чатов, мок внешних API для `/chat`, `/stt`, `/tts`.
-- [ ] Обновить корневой `README.md` под новую архитектуру и запуск.
-- [ ] Финальный `docker-compose.yml`: backend + postgres + frontend(nginx), переменные из `.env`, healthcheck'и, `depends_on`.
+- [x] Базовые тесты: авторизация, CRUD чатов, мок внешних API для `/chat`, `/stt`, `/tts`.
+- [x] Обновить корневой `README.md` под новую архитектуру и запуск.
+- [x] Финальный `docker-compose.yml`: backend + postgres + frontend(nginx), переменные из `.env`, healthcheck'и, `depends_on`.
 - [ ] Smoke-проверка полного цикла на чистом окружении (`docker compose up` с нуля).
 
 **Критерий приёмки:** проект поднимается с нуля одной командой и проходит полный голосовой сценарий.
