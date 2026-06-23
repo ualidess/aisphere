@@ -31,9 +31,16 @@ services:
       ELEVENLABS_TTS_MODEL: "${ELEVENLABS_TTS_MODEL:-eleven_multilingual_v2}"
       ELEVENLABS_STT_MODEL: "${ELEVENLABS_STT_MODEL:-scribe_v1}"
       ELEVENLABS_OUTPUT_FORMAT: "${ELEVENLABS_OUTPUT_FORMAT:-mp3_44100_128}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:8078,http://127.0.0.1:8078}"
+      MAX_AUDIO_UPLOAD_BYTES: "${MAX_AUDIO_UPLOAD_BYTES:-10485760}"
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - avatar_front_net
 
@@ -46,7 +53,8 @@ services:
       - ./frontend:/usr/share/nginx/html
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - avatar_front_net
 
