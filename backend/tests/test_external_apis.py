@@ -62,3 +62,34 @@ async def test_chat_uses_mocked_openai(client, monkeypatch):
     assert response.status_code == 200
     assert "https://api.openai.com/v1/chat/completions" in called_urls
     assert "Mocked AI response" in str(data)
+
+@pytest.mark.asyncio
+async def test_tts_uses_mocked_elevenlabs(client, monkeypatch):
+    headers = await create_auth_headers(client)
+    called_urls = []
+
+    async def fake_external_post(self, url, *args, **kwargs):
+        called_urls.append(str(url))
+
+        return Response(
+            200,
+            content=b"fake-mp3-audio",
+            request=Request("POST", url),
+        )
+
+    monkeypatch.setattr(
+        "httpx.AsyncClient.post",
+        fake_external_post,
+    )
+
+    response = await client.request(
+        "POST",
+        "/tts",
+        json={"text": "Hello from mocked TTS"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/mpeg"
+    assert response.content == b"fake-mp3-audio"
+    assert any("api.elevenlabs.io" in url for url in called_urls)
